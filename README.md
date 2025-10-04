@@ -18,4 +18,9 @@ https://github.com/adaptlearning/adapt_authoring/wiki/Installing-FFmpeg
 ## Running
 Make sure you power up Tello and connect to its network first. The reason is that our script sends "command" and "streamon" SDK commands to start the stream. This will not work if Tello isn't connected. After connecting to Tello run the following command from witin the tello-video-nodejs-websockets directory:
 
-$ node index.js
+    $ node HoustonWeHaveAProblem.js
+
+## Accessing the Video Stream
+Once the code is running you can access the following url in your browser and hopefully see Tello's video stream:
+
+    $ http://localhost:3000/index.html
