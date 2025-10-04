@@ -18,6 +18,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/actastudios/global-hackathon-v1"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
   }
 }
-
