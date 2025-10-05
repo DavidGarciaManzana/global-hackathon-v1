@@ -1,5 +1,6 @@
 const http = require('http');
 const fs = require('fs');
+const path = require('path');
 const WebSocket = require('ws');
 const spawn = require('child_process').spawn;
 const dgram = require('dgram');
@@ -17,14 +18,13 @@ const HTTP_PORT = 3000;
 const STREAM_PORT = 3001;
 const TELLO_IP = '192.168.10.1';
 const TELLO_PORT = 8889;
-const LOCAL_PORT = 8001; // Port to bind for receiving Tello responses
+const LOCAL_PORT = 8001;
 
 // =====================================================
-// 1. SHARED UDP CLIENT (Single point of communication)
+// 1. SHARED UDP CLIENT
 // =====================================================
 const telloClient = dgram.createSocket('udp4');
 
-// Try to bind, but handle if port is in use
 telloClient.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
         console.error(`[UDP Error] Port ${LOCAL_PORT} is in use. Kill the process or wait a moment.`);
@@ -38,14 +38,10 @@ telloClient.bind(LOCAL_PORT, () => {
     console.log(`[UDP Client] Bound to port ${LOCAL_PORT}`);
 });
 
-// Handle incoming messages from Tello
 telloClient.on('message', (msg, info) => {
-    console.log('info:',info)
     console.log(`[Tello Response] ${msg.toString()}`);
-    console.log(`[Received ${msg.length} bytes from ${info.address}:${info.port}]`);
 });
 
-// Generic function to send commands to Tello
 function sendToTello(command) {
     const message = Buffer.from(command);
     telloClient.send(message, 0, message.length, TELLO_PORT, TELLO_IP, (err) => {
@@ -58,20 +54,62 @@ function sendToTello(command) {
 }
 
 // =====================================================
-// 2. HTTP SERVER (Serves the web page for video viewing)
+// 2. IMPROVED HTTP SERVER (Handles libs/ directory)
 // =====================================================
 const httpServer = http.createServer(function(request, response) {
-    console.log(
-        `[HTTP Connection] ${HTTP_PORT} from ${request.socket.remoteAddress}:${request.socket.remotePort}`
-    );
+    console.log(`[HTTP Request] ${request.url}`);
 
-    fs.readFile(__dirname + '/www/' + request.url, function (err, data) {
+    let filePath = request.url;
+
+    // Handle root request
+    if (filePath === '/') {
+        filePath = '/index.html';
+    }
+
+    // Determine the actual file path
+    let fullPath;
+    if (filePath.startsWith('/libs/')) {
+        // Serve from libs/ directory at project root
+        // Remove leading slash to prevent path issues
+        const relativePath = filePath.substring(1); // Remove leading /
+        fullPath = path.join(__dirname, relativePath);
+        console.log(`[DEBUG] Serving libs file: ${fullPath}`);
+    } else if (filePath.startsWith('/models/')) {
+        // Serve from models/ directory at project root
+        const relativePath = filePath.substring(1);
+        fullPath = path.join(__dirname, relativePath);
+        console.log(`[DEBUG] Serving model file: ${fullPath}`);
+    } else {
+        // Serve from www/ directory
+        fullPath = path.join(__dirname, 'www', filePath);
+        console.log(`[DEBUG] Serving www file: ${fullPath}`);
+    }
+
+    // Determine content type
+    const extname = path.extname(fullPath).toLowerCase();
+    const mimeTypes = {
+        '.html': 'text/html',
+        '.js': 'text/javascript',
+        '.css': 'text/css',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.jpg': 'image/jpg',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon'
+    };
+    const contentType = mimeTypes[extname] || 'application/octet-stream';
+
+    fs.readFile(fullPath, function (err, data) {
         if (err) {
-            response.writeHead(404);
-            response.end(JSON.stringify(err));
+            console.error(`[404] ${fullPath}`);
+            response.writeHead(404, {'Content-Type': 'text/html'});
+            response.end('<h1>404 Not Found</h1><p>File: ' + filePath + '</p>');
             return;
         }
-        response.writeHead(200);
+
+        console.log(`[200] ${fullPath}`);
+        response.writeHead(200, {'Content-Type': contentType});
         response.end(data);
     });
 }).listen(HTTP_PORT);
@@ -79,12 +117,10 @@ const httpServer = http.createServer(function(request, response) {
 console.log(`[HTTP Server] Listening on port ${HTTP_PORT}`);
 
 // =====================================================
-// 3. STREAM SERVER (Receives video from FFmpeg)
+// 3. STREAM SERVER
 // =====================================================
 const streamServer = http.createServer(function(request, response) {
-    console.log(
-        `[Stream Connection] ${STREAM_PORT} from ${request.socket.remoteAddress}:${request.socket.remotePort}`
-    );
+    console.log(`[Stream Connection] ${STREAM_PORT} from ${request.socket.remoteAddress}:${request.socket.remotePort}`);
 
     request.on('data', function(data) {
         webSocketServer.broadcast(data);
@@ -94,7 +130,7 @@ const streamServer = http.createServer(function(request, response) {
 console.log(`[Stream Server] Listening on port ${STREAM_PORT}`);
 
 // =====================================================
-// 4. WEBSOCKET SERVER (Broadcasts video to browsers)
+// 4. WEBSOCKET SERVER
 // =====================================================
 const webSocketServer = new WebSocket.Server({
     server: streamServer
@@ -115,7 +151,7 @@ webSocketServer.on('connection', (ws) => {
 console.log('[WebSocket Server] Ready');
 
 // =====================================================
-// 5. TELLO INITIALIZATION (Enable SDK mode and video)
+// 5. TELLO INITIALIZATION
 // =====================================================
 console.log('[Initializing Tello]...');
 sendToTello('command');
@@ -126,7 +162,7 @@ setTimeout(() => {
 }, 1000);
 
 // =====================================================
-// 6. FFMPEG VIDEO STREAM (Start after delay)
+// 6. FFMPEG VIDEO STREAM
 // =====================================================
 setTimeout(function() {
     console.log('[Starting FFmpeg]...');
@@ -143,9 +179,6 @@ setTimeout(function() {
 
     const streamer = spawn('ffmpeg', args);
 
-    // Uncomment to see FFmpeg output
-    // streamer.stderr.pipe(process.stderr);
-
     streamer.on("exit", function(code) {
         console.log(`[FFmpeg] Exited with code ${code}`);
     });
@@ -154,7 +187,7 @@ setTimeout(function() {
 }, 3000);
 
 // =====================================================
-// 7. KEYBOARD CONTROL (Interactive command interface)
+// 7. KEYBOARD CONTROL
 // =====================================================
 const keyMap = new Map();
 keyMap.set('h', 'help');
@@ -224,7 +257,7 @@ function executeCommand(command) {
             break;
 
         case 'flip':
-            direction = 'f'; // forward flip
+            direction = 'f';
             sendToTello(`flip ${direction}`);
             break;
 
@@ -236,7 +269,7 @@ function executeCommand(command) {
 process.stdin.on('keypress', (str, key) => {
     if (key.ctrl && key.name === 'c') {
         console.log('\n[Shutting down]...');
-        sendToTello('land'); // Safety: land before exiting
+        sendToTello('land');
         setTimeout(() => {
             telloClient.close();
             process.exit();
