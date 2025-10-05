@@ -3,6 +3,7 @@
 **24 hours to build something impressive.**
 
 ## Requirements
+** You need to own a drone DJI Tello.
 **You'll need Node.js and npm installed. You can download and install the binaries from here:**
 
 https://nodejs.org/en/download/
