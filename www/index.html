@@ -207,10 +207,10 @@
                     const state = classifyPose(pose.keypoints);
 
                     ctx.font = "28px monospace";
-                    ctx.fillStyle = "black";
-                    ctx.fillText(`State:: ${state}`, 20, 40);
+                    ctx.fillStyle = "#0f0";
+                    ctx.fillText(`State: ${state}`, 20, 40);
 
-                    statusDiv.textContent = ` MoveNet ready - ${state}`;
+                    statusDiv.textContent = ` MoveNet ready`;
                 }
             });
         }
